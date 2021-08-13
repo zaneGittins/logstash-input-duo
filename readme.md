@@ -1,6 +1,6 @@
 # Logstash DUO Trustmonitor Plugin
 
-LogStash input for DUO Trust Monitor.
+Logstash input for DUO Trust Monitor.
 
 ## Installation
 
