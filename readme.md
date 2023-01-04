@@ -1,19 +1,32 @@
-# Logstash DUO Trustmonitor Plugin
+# Logstash DUO Plugin
 
-Logstash input for DUO Trust Monitor.
+This Logstash input plugin ingests events from DUO using the admin APIs. It ingests the following events:
 
-## Installation
+* Authentication logs
+* Administrator logs
+* Telephony logs
+* Offline enrollment logs
+* Trust monitor logs
+
+## Install
 
 ```bash
-cd /opt
-git clone https://github.com/zaneGittins/logstash-input-cisco_amp
-cd logstash-input-cisco_amp
-gem build logstash-input-cisco_amp.gemspec
-cd /usr/share/logstash
-./bin/logstash-plugin install /opt/logstash-input-duo_trustmonitor/logstash-input-duo_trustmonitor-1.0.0.gem
+# Git clone and build gem, alternatively, download the latest gem from the repo.
+git clone https://github.com/zaneGittins/logstash-input-duo
+cd logstash-input-duo
+gem build logstash-input-duo.gemspec
+
+# Install the plugin
+sudo /usr/share/logstash/bin/logstash-plugin install ~/logstash-input-duo/logstash-input-duo-1.0.1.gem
 ```
 
-## Configuration
+## Remove
+
+```bash
+sudo /usr/share/logstash/bin/logstash-plugin remove logstash-input-duo
+```
+
+## Configure
 
 * ikey = integration key.
 * skey = secret key.

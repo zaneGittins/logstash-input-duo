@@ -1,5 +1,5 @@
-class LogStash::Inputs::DUOTrustmonitor < LogStash::Inputs::Base
-  config_name "logstash-input-duo_trustmonitor"
+class LogStash::Inputs::DUO < LogStash::Inputs::Base
+  config_name "logstash-input-duo"
   default :codec, "json"
 
   config :ikey, :validate => :string
@@ -17,9 +17,9 @@ class LogStash::Inputs::DUOTrustmonitor < LogStash::Inputs::Base
 
   def digest(key, text)    
     OpenSSL::HMAC.hexdigest(DIGEST, key, text)
-end
+  end
 
-def canonicalize(method, host, path, params, options = {})
+  def canonicalize(method, host, path, params, options = {})
     options[:date] ||= time
     canon = [
       options[:date],
@@ -29,16 +29,16 @@ def canonicalize(method, host, path, params, options = {})
       encode_params(params)
     ]
     [options[:date], canon.join("\n")]
-end
+  end
 
-def encode_key_val(k, v)
+  def encode_key_val(k, v)
     # encode the key and the value for a url
     key = ERB::Util.url_encode(k.to_s)
     value = ERB::Util.url_encode(v.to_s)
     key + '=' + value
   end
 
-def encode_params(params_hash = nil)
+  def encode_params(params_hash = nil)
     return '' if params_hash.nil?
     params_hash.sort.map do |k, v|
       # when it is an array, we want to add that as another param
@@ -51,22 +51,22 @@ def encode_params(params_hash = nil)
     end.join('&')
   end
 
-def request_uri(path, params = nil)
+  def request_uri(path, params = nil)
     u = 'https://' + @host + path
     u += '?' + encode_params(params) unless params.nil?
     URI.parse(u)
   end
 
-def sign(method, host, path, params, options = {})
-    date, canon = canonicalize(method, host, path, params, date: options[:date])
-    [date, OpenSSL::HMAC.hexdigest('sha1', @skey, canon)]
-end
+  def sign(method, host, path, params, options = {})
+      date, canon = canonicalize(method, host, path, params, date: options[:date])
+      [date, OpenSSL::HMAC.hexdigest('sha1', @skey, canon)]
+  end
 
-def time
-    Time.now.rfc2822
-end
+  def time
+      Time.now.rfc2822
+  end
 
-def request(method, path, params = nil)
+  def request(method, path, params = nil)
     uri = request_uri(path, params)
     current_date, signed = sign(method, uri.host, path, params)
 
@@ -82,6 +82,32 @@ def request(method, path, params = nil)
     end
   end
 
+  def process_trust_events(queue, response, identifier)
+    data = JSON.parse(response)
+    if data.has_key?("response")
+      events = data['response']
+      events['events'].each do |child|
+        child['product'] = identifier
+        event = LogStash::Event.new("message" => child.to_json)
+        decorate(event)
+        queue << event
+      end
+    end
+  end
+
+  def process_log_events(queue, response, identifier)
+    data = JSON.parse(response)
+    if data.has_key?("response")
+      events = data['response']
+      events.each do |child|
+        child['product'] = identifier
+        event = LogStash::Event.new("message" => child.to_json)
+        decorate(event)
+        queue << event
+      end
+    end
+  end
+
   def run(queue)
     while !stop?
 
@@ -91,19 +117,27 @@ def request(method, path, params = nil)
       # Minimum / Maximum timestamps to search for events.
       mintime = (adjusted_time).strftime('%s%3N')
       maxtime = Time.now.utc.strftime('%s%3N')
+      mintimeSeconds = (adjusted_time).strftime('%s')
       
+      # DUO Trust Monitor Logs
       response = request 'GET', "/admin/v1/trust_monitor/events", {mintime: mintime, maxtime:maxtime}
+      process_trust_events(queue, response.body, 'duo_trust_monitor')
 
-      data = JSON.parse(response.body)
+      # DUO Authentication Logs
+      response = request 'GET', "/admin/v1/logs/authentication", {mintime: mintimeSeconds}
+      process_log_events(queue, response.body, 'duo_authentication')
 
-      if data.has_key?("response")
-        events = data['response']
-        events['events'].each do |child|
-          event = LogStash::Event.new("message" => child.to_json)
-          decorate(event)
-          queue << event
-        end
-      end
+      # DUO Administrator Logs
+      response = request 'GET', "/admin/v1/logs/administrator", {mintime: mintimeSeconds}
+      process_log_events(queue, response.body, 'duo_administrator')
+
+      # DUO Telephony Logs
+      response = request 'GET', "/admin/v1/logs/telephony", {mintime: mintimeSeconds}
+      process_log_events(queue, response.body, 'duo_telephony')
+
+      # DUO Offline Enrollment Logs
+      response = request 'GET', "/admin/v1/logs/offline_enrollment", {mintime: mintimeSeconds}
+      process_log_events(queue, response.body, 'duo_offline_enrollment')
 
       Stud.stoppable_sleep(@interval) { stop? }
     end # loop
