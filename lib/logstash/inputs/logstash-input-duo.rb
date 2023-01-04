@@ -95,6 +95,19 @@ class LogStash::Inputs::DUO < LogStash::Inputs::Base
     end
   end
 
+  def process_auth_events(queue, response, identifier)
+    data = JSON.parse(response)
+    if data.has_key?("response")
+      events = data['response']
+      events['authlogs'].each do |child|
+        child['product'] = identifier
+        event = LogStash::Event.new("message" => child.to_json)
+        decorate(event)
+        queue << event
+      end
+    end
+  end
+
   def process_log_events(queue, response, identifier)
     data = JSON.parse(response)
     if data.has_key?("response")
@@ -124,8 +137,8 @@ class LogStash::Inputs::DUO < LogStash::Inputs::Base
       process_trust_events(queue, response.body, 'duo_trust_monitor')
 
       # DUO Authentication Logs
-      response = request 'GET', "/admin/v1/logs/authentication", {mintime: mintimeSeconds}
-      process_log_events(queue, response.body, 'duo_authentication')
+      response = request 'GET', "/admin/v2/logs/authentication", {mintime: mintime, maxtime:maxtime}
+      process_auth_events(queue, response.body, 'duo_authentication')
 
       # DUO Administrator Logs
       response = request 'GET', "/admin/v1/logs/administrator", {mintime: mintimeSeconds}
